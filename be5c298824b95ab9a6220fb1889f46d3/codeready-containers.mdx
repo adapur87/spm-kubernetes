@@ -1,0 +1,269 @@
+---
+title: CodeReady Containers
+description: CodeReady Containers
+tabs: ['OpenShift Overview','CodeReady Containers']
+---
+
+## What is CRC?
+
+CodeReady Containers (CRC) is a minimal, preconfigured OpenShift 4.1 or newer cluster that is designed to run on your local workstation as a development environment for OpenShift.
+For more information, see [CodeReady Containers](https://github.com/code-ready/crc).
+
+Similar to Minikube in concept, CRC provides a cloud like environment locally to create and deploy an OpenShift cluster for development and testing purposes.
+
+This page covers some common CRC operations, including deploying IBM® Cúram Social Program Management (SPM) to the CRC environment. You will use the helm charts produced in [Preparing Helm charts](/deployment/hc_deployment).
+
+For a full getting started guide for CRC, see [Getting Started Guide CodeReady Containers](https://access.redhat.com/documentation/en-us/red_hat_codeready_containers/1.8/html/getting_started_guide/index)
+
+### Minimum System requirements
+
+CodeReady Containers system requirements can be found here: [CRC Minimum system requirements](https://code-ready.github.io/crc/#minimum-system-requirements_gsg).
+
+<InlineNotification>
+
+There is a know CRC [issue](https://github.com/code-ready/crc/issues/557) with respect to resource usage. When deploying SPM on CRC our experience has shown that a minimum of 16GB will improve performance, however 32GB is optimal.
+
+</InlineNotification>
+
+## Installing CRC
+
+Create an account at [RedHat Cloud](https://www.redhat.com/).
+Create a `$CRC_HOME` folder to use for the purposes of the installation.
+Download the installation archive from [latest release](https://cloud.redhat.com/openshift/install/crc/installer-provisioned) to `$CRC_HOME` and extract the archive.
+On the same page, download your pull secret to `$CRC_HOME`. At the time of writing the `latest release` is `1.13.0`.
+
+```shell
+tar -xvf crc-macos-amd64.tar.xz
+```
+
+<InlineNotification>
+
+**Note:**  You have two options, add the binary to the `PATH` environment variable, or move it to `/usr/local/bin/`.
+
+</InlineNotification>
+
+<Tabs>
+
+<Tab label="Add to the PATH">
+<Row>
+<Column>
+
+```shell
+export PATH=$CRC_HOME/crc-macos-1.10.0-amd64:$PATH`
+```
+
+</Column>
+</Row>
+</Tab>
+
+<Tab label="/usr/bin/local ">
+<Row>
+<Column>
+
+```shell
+mv $CRC_HOME/crc-macos-1.10.0-amd64/crc /usr/local/bin
+```
+
+</Column>
+</Row>
+</Tab>
+</Tabs>
+
+Whichever option you choose, you should now have crc in your executable path, to test this run the following command:
+
+```shell
+crc version
+```
+
+The output should be similar to the following:
+
+```
+crc version: 1.10.0+9025021
+OpenShift version: 4.4.3 (embedded in binary)
+```
+
+## Setting up CRC
+
+The first step is to configure the prerequisites for the OpenShift cluster, including taking control of your hosts and resolver files to provide access to the CRC cluster.
+To do this run the following command, providing the workstation administrator password as required.
+This procedure also creates the ~/.crc directory if it does not already exist.
+
+```shell
+crc setup
+```
+
+Now that the basic configuration is complete, you need to edit the configuration to change the memory limit and add the path to the pull secret file downloaded previously.
+
+To change the memory limit, set the CPUs to 6, and add the path to the pull secret file downloaded previously. Run the following commands:
+
+```shell
+crc config set memory 32768
+crc config set cpus 6
+crc config set pull-secret-file $CRC_HOME/pull-secret.txt
+```
+
+<InlineNotification>
+
+**Note:**  While CRC's minimum memory allocation requirement is 8GB, only a single replica SPM deployment can be achieved using this.
+
+You should allocate as many resources as are available.
+
+The greater the workload the greater the memory and processor requirements.
+
+Any changes to the crc config require you to delete the cluster and start a new one.
+
+</InlineNotification>
+
+You can always check the configured options of ’crc’, run the following command:
+
+```shell
+crc config view
+```
+
+After setup is complete, start the cluster with 6 CPUs, run the following command:
+
+```shell
+crc start
+```
+
+This outputs something similar to the following:
+
+```
+level=info msg="Checking if oc binary is cached"
+...
+...
+...
+level=info msg="To access the cluster, first set up your environment by following 'crc oc-env' instructions"
+level=info msg="Then you can access it by running 'oc login -u developer -p developer https://api.crc.testing:6443'"
+level=info msg="To login as an admin, run 'oc login -u kubeadmin -p YourPassWordHere https://api.crc.testing:6443'"
+...
+...
+```
+
+Note the `kubeadmin` and `developer` credentials for later use.
+
+<InlineNotification>
+
+**Note:**  For the rest of the guide you can substitute the credentials you received when you started your cluster for `$KUBEADMN_PSWD` and `$KUBEDEVEL_PSWD`.
+
+Alternatively, these credentials are returned by the `crc console --credentials` command.
+This guide uses `$KUBEDEVEL_PSWD` and `$KUBEADMN_PSWD` environment variables.
+
+You may find it convenient to to the same, so you can copy and paste commands without having to switch values:
+
+`export KUBEADMN_PSWD=yourKubeAdminPassword`
+
+`export KUBEDEVEL_PSWD=yourKubeDeveloperPassword`
+
+</InlineNotification>
+
+Next, set up the OpenShift Client `oc`, which is used to administer the CRC cluster:
+
+```shell
+crc oc-env
+eval $(crc oc-env)
+```
+
+If required you can stop the cluster:
+
+```shell
+crc stop
+```
+
+Or delete the cluster:
+
+```shell
+crc delete
+```
+
+## Creating a CRC project
+
+Create a project for the SPM deployment, again use an environment variable for your convenience when following the guide.
+
+Create the environment variable, you can set to value to anything you like, but it should consist of lower case alphanumeric characters or `-`, and must start and end with an alphanumeric character (e.g. `my-name`,  or `123-abc`):
+
+```shell
+export PROJECT="ocp"
+```
+
+Log in as kubeadmin:
+
+```shell
+oc login -u kubeadmin -p $KUBEADMN_PSWD https://api.crc.testing:6443
+```
+
+Create the project:
+
+```shell
+oc adm new-project $PROJECT
+```
+
+Switch kubernetes context to the new project:
+
+```shell
+kubectl config set-context --current --namespace $PROJECT
+```
+
+## Deployment Process
+
+Enable the Image Registry default route:
+
+```shell
+oc patch configs.imageregistry.operator.openshift.io/cluster --type merge -p '{"spec":{"defaultRoute":true}}'
+
+```
+
+Add relevant roles to user:
+
+```shell
+oc adm policy add-cluster-role-to-user registry-viewer kube:admin
+```
+
+Log in to the OpenShift registry:
+
+```shell
+docker login -u kubeadmin -p $(oc whoami -t) $(oc registry info --public)
+```
+
+<InlineNotification>
+
+`oc registry info --public` should return a URL like `default-route-openshift-image-registry.apps-crc.testing` which is used for publishing images into the internal image registry.
+
+The image registry URL for use in Helm override values can be retrieved using `oc registry info --internal`: `image-registry.openshift-image-registry.svc:5000`
+
+</InlineNotification>
+
+## Hostname configuration for CRC
+
+This runbook uses a generic hostname of `spm-ocp.apps-crc.testing` as an example in commands and the configuration files.
+You should add the CRC IP address to the `hosts` file by using the generic hostname, or else modify the usage of `spm-ocp.apps-crc.testing` in this runbook to reflect your local hostname.
+
+<Tabs>
+
+<Tab label="Mac/Linux">
+<Row>
+<Column>
+
+```shell
+echo -e "$(crc ip)\tspm-ocp.apps-crc.testing" | sudo tee -a /etc/hosts
+```
+
+</Column>
+</Row>
+</Tab>
+
+<Tab label="Windows">
+<Row>
+<Column>
+
+```powershell
+Add-Content -Path C:\Windows\System32\drivers\etc\hosts -Value "$(crc ip)\tspm-ocp.apps-crc.testing" -Force
+```
+
+</Column>
+</Row>
+</Tab>
+
+</Tabs>
+
+Where `crc ip` is the command that returns the CRC VM's IP address that is accessible from your workstation.
